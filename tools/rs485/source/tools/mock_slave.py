@@ -17,6 +17,8 @@
   hr[0]      力值原始值 = 力(N) × 100，16 位，比如 752 表示 7.52 N
   hr[1]      固定 0（留位）
   hr[2..3]   32 位版本：力(N) × 10000，高字在前（测试 32 位读数用）
+  hr[0x9C40..0x9C41]  32 位力值窗口：力(N) × 10000，高字在前
+              （默认地址，与真变送器寄存器 40000 一致；--base-register 可改）
   hr[17]     固定 12345（验证寄存器地址对不对）
   hr[19]     固定 6789
   hr[4..16, 18, 20..63]  可读可写（写进去能读出来，测试 06 功能码用）
@@ -89,12 +91,14 @@ class MockSlave:
     """极简 Modbus TCP 从站，够用就好：03/04/06/10 + 异常帧。"""
 
     def __init__(self, host: str = '127.0.0.1', port: int = 5020, unit: int = 1,
-                 signal: str = 'puncture', verbose: bool = True):
+                 signal: str = 'puncture', verbose: bool = True,
+                 base_register: int = 0x9C40):
         self.host = host
         self.port = port
         self.unit = unit
         self.signal = Signal(signal)
         self.verbose = verbose
+        self.base_register = int(base_register)
 
         self.regs = [0] * 64
         self.regs[17] = 12345
@@ -118,7 +122,8 @@ class MockSlave:
         self._thread = threading.Thread(target=self._accept_loop, daemon=True)
         self._thread.start()
         if self.verbose:
-            print(f'[模拟从站] 已启动 {self.host}:{self.port}  从站地址={self.unit}  信号={self.signal.mode}')
+            print(f'[模拟从站] 已启动 {self.host}:{self.port}  从站地址={self.unit}  '
+                  f'信号={self.signal.mode}  32位力值窗口=0x{self.base_register:X}')
         return self
 
     def stop(self) -> None:
@@ -180,6 +185,10 @@ class MockSlave:
     def _live_value(self, addr: int) -> int:
         raw16 = int(round(self.signal.force() * 100)) & 0xFFFF
         raw32 = int(round(self.signal.force() * 10000)) & 0xFFFFFFFF
+        if addr == self.base_register:
+            return (raw32 >> 16) & 0xFFFF
+        if addr == self.base_register + 1:
+            return raw32 & 0xFFFF
         if addr == 0:
             return raw16
         if addr == 2:
@@ -188,13 +197,23 @@ class MockSlave:
             return raw32 & 0xFFFF
         return self.regs[addr]
 
+    def _readable(self, addr: int, count: int) -> bool:
+        """可读范围：常规寄存器 0..63 + 32 位力值窗口（默认 0x9C40/0x9C41）。"""
+        for a in range(addr, addr + count):
+            if 0 <= a < len(self.regs):
+                continue
+            if a in (self.base_register, self.base_register + 1):
+                continue
+            return False
+        return True
+
     def _handle(self, pdu: bytes) -> bytes | None:
         func = pdu[0]
 
         # 03 读保持寄存器 / 04 读输入寄存器
         if func in (3, 4):
             addr, count = struct.unpack('>HH', pdu[1:5])
-            if count < 1 or count > 125 or addr + count > len(self.regs):
+            if count < 1 or count > 125 or not self._readable(addr, count):
                 return bytes([func | 0x80, 0x02])  # 非法数据地址
             vals = [self._live_value(a) for a in range(addr, addr + count)]
             data = b''.join(struct.pack('>H', v) for v in vals)
@@ -227,9 +246,12 @@ def main() -> None:
     ap.add_argument('--unit', type=int, default=1, help='从站地址（默认 1）')
     ap.add_argument('--signal', choices=['puncture', 'sine', 'static'], default='puncture')
     ap.add_argument('--quiet', action='store_true', help='不打印每一帧')
+    ap.add_argument('--base-register', type=lambda x: int(x, 0), default=0x9C40,
+                    help='32 位力值窗口起始寄存器（默认 0x9C40，与真变送器一致）')
     args = ap.parse_args()
 
-    slave = MockSlave(args.host, args.port, args.unit, args.signal, verbose=not args.quiet).start()
+    slave = MockSlave(args.host, args.port, args.unit, args.signal,
+                      verbose=not args.quiet, base_register=args.base_register).start()
     print('按 Ctrl+C 停止')
     try:
         while True:
