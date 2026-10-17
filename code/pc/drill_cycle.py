@@ -29,7 +29,7 @@ class DrillParams:
     """钻孔参数（全部现场可调，单位见注释）。"""
     feed_speed: float = 40.0            # 钻孔进给速度（步/秒），0.4 mm/s
     normal_speed: float = 500.0         # 钻完恢复的全轴速度（固件默认）
-    safe_depth_steps: int = 500         # 安全限深（步），Z+ 为下；5 mm
+    safe_depth_steps: int = 300         # 安全限深（步），Z+ 为下；3 mm 初值（按实测刺穿深度+1mm 余量调）
     lift_steps: int = 1000              # 触发后抬升距离（步）；10 mm
     timeout_seconds: float = 60.0       # 总超时：未检测到阶跃则中止
     pos_poll_interval: float = 0.1      # POS 轮询间隔（秒）
