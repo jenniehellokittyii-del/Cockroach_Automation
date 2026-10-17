@@ -56,6 +56,7 @@ def _event_to_dict(event):
 
 
 def run_drill_cycle(io, sensor, params=None, detector=None,
+                    progress=None, progress_interval=0.5,
                     clock=time.monotonic, sleep=time.sleep, log=print):
     """执行一次完整钻孔循环，返回结果字典。
 
@@ -63,6 +64,9 @@ def run_drill_cycle(io, sensor, params=None, detector=None,
     query_positions(timeout) / wait_z(target_z, timeout) / fault() / clear_fault()；
     期望 sensor 提供：latest() -> (monotonic, raw, value) | None、
     consecutive_failures / last_error / total_samples。
+
+    progress(info) 可选：钻孔监控期间每 progress_interval 秒回调一次，
+    info={'elapsed','z','depth','sample'}，供现场界面显示实时状态。
     """
     params = params or DrillParams()
     detector = detector or StepDetector(**params.step_detect_kwargs)
@@ -122,6 +126,8 @@ def run_drill_cycle(io, sensor, params=None, detector=None,
     status = detail = trigger = None
     last_pos_poll = 0.0
     last_fresh = clock()
+    last_progress = 0.0
+    last_pos = None
     while True:
         now = clock()
         if now - started >= params.timeout_seconds:
@@ -152,11 +158,20 @@ def run_drill_cycle(io, sensor, params=None, detector=None,
             last_pos_poll = now
             pos = io.query_positions(timeout=0.6)
             if pos is not None:
+                last_pos = pos
                 depth = pos['Z'] - result['z_start']
                 if depth >= params.safe_depth_steps:
                     status = 'DEPTH_LIMIT'
                     detail = f'下钻 {depth} 步 ≥ 安全限深 {params.safe_depth_steps} 步'
                     break
+        if progress is not None and now - last_progress >= progress_interval:
+            last_progress = now
+            progress({
+                'elapsed': now - started,
+                'z': last_pos['Z'] if last_pos else None,
+                'depth': (last_pos['Z'] - result['z_start']) if last_pos else None,
+                'sample': sample,
+            })
         sleep(params.loop_wait)
 
     return _stop_and_lift(io, sensor, params, result, finish, log, clock,
