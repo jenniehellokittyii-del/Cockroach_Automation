@@ -27,7 +27,7 @@ __all__ = ['DrillParams', 'run_drill_cycle']
 @dataclass
 class DrillParams:
     """钻孔参数（全部现场可调，单位见注释）。"""
-    feed_speed: float = 40.0            # 钻孔进给速度（步/秒），0.4 mm/s
+    feed_speed: float = 20.0            # 钻孔进给速度（步/秒），0.2 mm/s 首测保守；跑通后可 30~40
     normal_speed: float = 500.0         # 钻完恢复的全轴速度（固件默认）
     safe_depth_steps: int = 300         # 安全限深（步），Z+ 为下；3 mm 初值（按实测刺穿深度+1mm 余量调）
     lift_steps: int = 1000              # 触发后抬升距离（步）；10 mm
