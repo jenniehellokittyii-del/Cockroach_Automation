@@ -1,6 +1,6 @@
 {
   "mode": "serial",
-  "port": "COM21",
+  "port": "COM6",
   "baudrate": 19200,
   "unit": 1,
   "register": 40000,

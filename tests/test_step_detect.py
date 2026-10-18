@@ -95,6 +95,32 @@ class StepDetectorTests(unittest.TestCase):
         self.assertIsNotNone(event)
         self.assertIsNone(detector.update(event.time + 0.1, 0.0))
 
+    def test_sensitive_mode_detects_small_confirmed_step(self):
+        values = [-240] * 20 + [-237] + [-240] * 5
+        samples = [(i * 0.077, value) for i, value in enumerate(values)]
+        event, _ = step_detect.detect_step(
+            samples, sigma_k=3.0, load_k=2.0, min_noise=0.5,
+            min_drop=2.0, confirm_samples=3,
+        )
+        self.assertIsNotNone(event)
+        self.assertGreater(event.drop, event.threshold)
+
+    def test_sensitive_mode_ignores_single_sample_drop(self):
+        values = [-240] * 20 + [-237, -240, -237, -240, -237]
+        samples = [(i * 0.077, value) for i, value in enumerate(values)]
+        event, _ = step_detect.detect_step(
+            samples, sigma_k=3.0, load_k=2.0, min_noise=0.5,
+            min_drop=2.0, confirm_samples=3,
+        )
+        self.assertIsNone(event)
+
+    def test_no_trigger_on_one_lsb_quantized_noise(self):
+        # 历史误触发场景：传感器整数输出只跳 1 个单位（-239/-240）
+        values = [-239] * 60 + [-240] * 20 + [-239] * 60
+        samples = [(i * 0.077, value) for i, value in enumerate(values)]
+        event, _ = step_detect.detect_step(samples)
+        self.assertIsNone(event)
+
 
 if __name__ == '__main__':
     unittest.main()

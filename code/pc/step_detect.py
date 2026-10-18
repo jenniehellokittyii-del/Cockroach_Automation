@@ -12,6 +12,9 @@
 
 参数全部可在构造时覆盖；阈值与真实单位无关（相对噪声带），
 现场用真实刺穿 CSV 回放微调即可。
+
+注意：sigma_eff = max(sigma, min_noise)，min_noise 默认 1.0，
+避免整数输出（±1 量化噪声）被当成阶跃而误触发。
 """
 
 from __future__ import annotations
@@ -46,12 +49,15 @@ class StepDetector:
         sigma_k=5.0,
         load_k=4.0,
         min_drop=0.0,
-        min_noise=0.0,
+        min_noise=1.0,
         peak_window_seconds=3.0,
         min_baseline_samples=5,
+        confirm_samples=1,
     ):
         if baseline_seconds < 0:
             raise ValueError('baseline_seconds 不能为负')
+        if confirm_samples < 1:
+            raise ValueError('confirm_samples 至少为 1')
         self.baseline_seconds = float(baseline_seconds)
         self.sigma_k = float(sigma_k)
         self.load_k = float(load_k)
@@ -59,6 +65,7 @@ class StepDetector:
         self.min_noise = float(min_noise)
         self.peak_window_seconds = float(peak_window_seconds)
         self.min_baseline_samples = int(min_baseline_samples)
+        self.confirm_samples = int(confirm_samples)
 
         self._t0 = None
         self._baseline = []
@@ -68,6 +75,7 @@ class StepDetector:
         self._peak = None
         self._peak_time = None
         self._loaded = False
+        self._pending_drop = 0
         self.triggered = False
 
     # ---------- 内部 ----------
@@ -126,7 +134,7 @@ class StepDetector:
             if self._peak - self._mu >= self.load_k * sigma_eff:
                 self._loaded = True
 
-        # 阶段 3：回落触发（严格大于阈值；无噪声信号且阈值为 0 时不触发）
+        # 阶段 3：回落触发（严格大于阈值；confirm_samples 连续满足才触发）
         threshold = max(self.sigma_k * sigma_eff, self.min_drop)
         drop = self._peak - value
         if (
@@ -134,6 +142,9 @@ class StepDetector:
             and drop > threshold
             and t - self._peak_time <= self.peak_window_seconds
         ):
+            self._pending_drop += 1
+            if self._pending_drop < self.confirm_samples:
+                return None
             self.triggered = True
             return StepEvent(
                 time=t,
@@ -147,6 +158,7 @@ class StepDetector:
                 baseline_samples=len(self._baseline),
                 elapsed=t - self._t0,
             )
+        self._pending_drop = 0
         return None
 
 

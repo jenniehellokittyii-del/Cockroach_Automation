@@ -21,7 +21,7 @@
 | `hardware/ip42/` | IP42 驱动器手册、接线图和完整调试软件 |
 | `runtime/` | 运行时生成的日志和识别结果，不提交 Git |
 | `tests/` | 无硬件自动检查及独立的转盘手动检查脚本 |
-| `docs/` | 第三方源码许可证、工作方案及不参与运行的点位记录 |
+| `docs/` | 第三方源码许可证、工作方案/参数表及不参与运行的点位记录 |
 
 ## 代码文件用途
 
@@ -49,7 +49,7 @@
 
 视觉模块原有的独立依赖清单与根目录 `requirements.txt` 重复，因此整理版只保留根目录的一份。
 
-`tests/manual_turntable/` 的三个脚本是分步骤验证转盘使能、转动及三个工具位的**手动硬件检查**，主程序不依赖它们；不要在无人监护时运行。`tests/test_motion_safety.py` 是不接设备的自动检查，方便改动后确认关键保护仍在。`tests/test_force_sensor.py`、`test_step_detect.py`、`test_drill_cycle.py`、`test_e2e_mock_slave.py` 是钻孔/传感器模块的离线检查，不接设备也不开真实串口。`tests/` 对实际运行不是必需，但建议随源码保留。
+`tests/manual_turntable/` 的三个脚本是分步骤验证转盘使能、转动及三个工具位的**手动硬件检查**，主程序不依赖它们；不要在无人监护时运行。`tests/manual_drill/` 是钻孔现场工具：`drill_console.py`（手动控制 + RUN 钻孔）和 `scan_sensor.py`（传感器寄存器/按压诊断），同样需要有人监护。`tests/test_motion_safety.py` 是不接设备的自动检查，方便改动后确认关键保护仍在。`tests/test_force_sensor.py`、`test_step_detect.py`、`test_drill_cycle.py`、`test_e2e_mock_slave.py` 是钻孔/传感器模块的离线检查，不接设备也不开真实串口。`tests/` 对实际运行不是必需，但建议随源码保留。
 
 `docs/DM_Control_Python_LICENSE` 是 `DM_CAN.py` 上游源码的 MIT 许可文本。上传 GitHub 分享源码时应保留；它不参与程序运行。`docs/reference/vision_position.json` 记录了旧机位测量信息，当前程序不读取它；实际运行参数在 `settings.py`。
 

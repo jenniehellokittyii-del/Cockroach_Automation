@@ -206,6 +206,60 @@ class DrillCycleTests(unittest.TestCase):
         self.assertFalse(result['lifted'])
         self.assertEqual(io.lift_targets, [])
 
+    def test_negative_z_refused_before_motion(self):
+        # 负坐标下固件 ZDOWN 会 32 位溢出反向，必须在运动前拒绝
+        io = FakeIO(z_start=-100)
+        sensor = FakeSensor()
+        result = run_cycle(io, sensor, StubDetector(None))
+        self.assertEqual(result['status'], 'Z_NEGATIVE')
+        self.assertEqual(io.commands, [])
+        self.assertFalse(result['lifted'])
+
+    def test_negative_z_runs_when_allowed(self):
+        # 调用方改用相对下行时，负坐标可以正常执行；抬升回到 0
+        io = FakeIO(z_start=-100, step=0)
+        sensor = FakeSensor()
+        result = run_cycle(io, sensor, StubDetector(None), timeout_seconds=0.1,
+                           allow_negative_z=True)
+        self.assertEqual(result['status'], 'TIMEOUT')
+        self.assertTrue(result['lifted'])
+        self.assertEqual(result['z_lift_target'], 0)
+        self.assertIn('Z 100', [c.upper() for c in io.commands])
+
+    def test_lift_is_clamped_at_zero(self):
+        # 抬升不得越过回零位置进入负坐标
+        io = FakeIO(z_start=50, step=0)
+        sensor = FakeSensor()
+        result = run_cycle(io, sensor, StubDetector(None), timeout_seconds=0.1)
+        self.assertEqual(result['status'], 'TIMEOUT')
+        self.assertTrue(result['lifted'])
+        self.assertEqual(result['z_lift_target'], 0)
+        self.assertIn('Z -50', [c.upper() for c in io.commands])
+
+    def test_settle_delay_before_lift(self):
+        sleeps = []
+        io = FakeIO(step=2)
+        sensor = FakeSensor()
+        params = drill_cycle.DrillParams(**BASE_PARAMS)
+        params.settle_seconds = 0.1
+        drill_cycle.run_drill_cycle(
+            io, sensor, params=params, detector=StubDetector(trigger_after=5),
+            log=lambda message: None, sleep=sleeps.append,
+        )
+        self.assertIn(0.1, sleeps)
+
+    def test_extra_drill_delay_after_breakthrough(self):
+        sleeps = []
+        io = FakeIO(step=2)
+        sensor = FakeSensor()
+        params = drill_cycle.DrillParams(**BASE_PARAMS)
+        params.extra_drill_seconds = 0.2
+        drill_cycle.run_drill_cycle(
+            io, sensor, params=params, detector=StubDetector(trigger_after=5),
+            log=lambda message: None, sleep=sleeps.append,
+        )
+        self.assertIn(0.2, sleeps)
+
 
 if __name__ == '__main__':
     unittest.main()

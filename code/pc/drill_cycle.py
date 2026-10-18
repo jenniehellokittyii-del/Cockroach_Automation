@@ -27,16 +27,19 @@ __all__ = ['DrillParams', 'run_drill_cycle']
 @dataclass
 class DrillParams:
     """钻孔参数（全部现场可调，单位见注释）。"""
-    feed_speed: float = 20.0            # 钻孔进给速度（步/秒），0.2 mm/s 首测保守；跑通后可 30~40
+    feed_speed: float = 500.0           # 钻孔进给速度（步/秒），5 mm/s（与手动速度一致）
     normal_speed: float = 500.0         # 钻完恢复的全轴速度（固件默认）
-    safe_depth_steps: int = 300         # 安全限深（步），Z+ 为下；3 mm 初值（按实测刺穿深度+1mm 余量调）
-    lift_steps: int = 1000              # 触发后抬升距离（步）；10 mm
+    safe_depth_steps: int = 2000        # 安全限深（步），Z+ 为下；20 mm（现场临时放宽）
+    lift_steps: int = 2000              # 触发后抬升距离（步）；20 mm（现场确认）
+    settle_seconds: float = 0.0         # 停止后、开始抬升前的停顿（默认 0；可配）
+    extra_drill_seconds: float = 0.0    # 检测到阶跃后继续下钻的秒数（默认 0；可配）
     timeout_seconds: float = 60.0       # 总超时：未检测到阶跃则中止
     pos_poll_interval: float = 0.1      # POS 轮询间隔（秒）
     sensor_stale_seconds: float = 1.5   # 传感器数据过期判定（秒）
     sensor_fail_limit: int = 10         # 传感器连续失败次数上限
     loop_wait: float = 0.01             # 监控循环步长（秒）
     lift_timeout_seconds: float = 20.0  # 抬升到位等待上限（秒）
+    allow_negative_z: bool = False      # True 时允许负 Z 下钻（调用方必须保证 ZDOWN 用相对移动）
     step_detect_kwargs: dict = field(default_factory=dict)
 
 
@@ -97,6 +100,12 @@ def run_drill_cycle(io, sensor, params=None, detector=None,
     if pos is None:
         return finish('NO_POSITION', '读取 POS 失败，未执行任何动作')
     result['z_start'] = pos['Z']
+    if result['z_start'] < 0 and not params.allow_negative_z:
+        return finish(
+            'Z_NEGATIVE',
+            f'Z 坐标为负（{result["z_start"]}）：负坐标下固件 ZDOWN 会因 32 位溢出反向向上。'
+            '已拒绝下钻；请先手动向下移动（如 Z 500）或 HOME，使 Z≥0 后重试',
+        )
     log(f"[DC] 开始：Z_start={result['z_start']}，进给={_fmt_speed(params.feed_speed)} 步/秒，"
         f"安全限深={params.safe_depth_steps} 步，抬升={params.lift_steps} 步")
 
@@ -113,14 +122,14 @@ def run_drill_cycle(io, sensor, params=None, detector=None,
     ack = io.read_response(timeout=1.0)
     if 'DRILL ON' not in (ack or ''):
         return _stop_and_lift(io, sensor, params, result, finish, log, clock,
-                              'DRILL_ON_FAILED', f'未确认钻头启动：{ack!r}')
+                              'DRILL_ON_FAILED', f'未确认钻头启动：{ack!r}', sleep=sleep)
 
     result['drilling_started'] = True
     io.send('ZDOWN')
     ack = io.read_response(timeout=1.0)
     if 'MOVE Z DOWN' not in (ack or ''):
         return _stop_and_lift(io, sensor, params, result, finish, log, clock,
-                              'NO_ZDOWN', f'未确认开始下钻：{ack!r}')
+                              'NO_ZDOWN', f'未确认开始下钻：{ack!r}', sleep=sleep)
 
     # ---------- 监控循环 ----------
     status = detail = trigger = None
@@ -144,6 +153,9 @@ def run_drill_cycle(io, sensor, params=None, detector=None,
             event = detector.update(sample[0], sample[2])
             if event is not None:
                 status, detail, trigger = 'BREAKTHROUGH', '检测到阶跃（刺穿跌落）', event
+                # 检测到阶跃后继续下钻 extra_drill_seconds（约 1mm），确保钻穿
+                if params.extra_drill_seconds > 0:
+                    sleep(params.extra_drill_seconds)
                 break
         if getattr(sensor, 'consecutive_failures', 0) >= params.sensor_fail_limit:
             status = 'SENSOR_FAULT'
@@ -175,11 +187,11 @@ def run_drill_cycle(io, sensor, params=None, detector=None,
         sleep(params.loop_wait)
 
     return _stop_and_lift(io, sensor, params, result, finish, log, clock,
-                          status, detail, trigger)
+                          status, detail, trigger, sleep=sleep)
 
 
 def _stop_and_lift(io, sensor, params, result, finish, log, clock,
-                   status, detail=None, trigger=None):
+                   status, detail=None, trigger=None, sleep=time.sleep):
     """统一中止/收尾路径：STOP -> 复核 -> 记录 -> 恢复速度 -> 抬升。"""
     # 1) 停：STOP 先关钻头，再立即清目标停 Z
     io.send('STOP')
@@ -205,15 +217,25 @@ def _stop_and_lift(io, sensor, params, result, finish, log, clock,
     io.send(f'SPEED {_fmt_speed(params.normal_speed)}')
     io.read_response(timeout=0.3)
 
-    # 5) 抬升固定距离
+    # 触发/中止后先停顿 settle_seconds（默认 0.1s），再抬升
+    if params.settle_seconds > 0:
+        sleep(params.settle_seconds)
+
+    # 5) 抬升固定距离（不越过回零位置 Z=0，避免进入负坐标）
     if z_stop is not None:
         target = z_stop - int(params.lift_steps)
+        if target < 0:
+            target = 0
+        delta = target - z_stop
         result['z_lift_target'] = target
-        io.send(f'Z -{int(params.lift_steps)}')
-        io.read_response(timeout=0.3)
-        result['lifted'] = bool(io.wait_z(target, timeout=params.lift_timeout_seconds))
-        if not result['lifted']:
-            log(f'[DC] 警告：抬升未确认到位（目标 Z={target}），请人工确认')
+        if delta != 0:
+            io.send(f'Z {delta}')
+            io.read_response(timeout=0.3)
+            result['lifted'] = bool(io.wait_z(target, timeout=params.lift_timeout_seconds))
+            if not result['lifted']:
+                log(f'[DC] 警告：抬升未确认到位（目标 Z={target}），请人工确认')
+        else:
+            result['lifted'] = True
     else:
         log('[DC] 警告：读不到停止位置，无法自动抬升，请人工确认后手动抬升')
 
