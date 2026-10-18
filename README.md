@@ -10,9 +10,10 @@
 | `code/pc/serial_motion.py` | Arduino 串口协议、运动、回零和位置确认 |
 | `code/pc/turntable.py` | USB-CAN 转盘控制 |
 | `code/pc/vision_workflows.py` | 腹部和头部视觉流程、坐标换算及运动检查 |
+| `code/pc/drill_workflows.py` | 传感器钻孔流程（DC 命令）：阶跃停钻与安全抬升 |
 | `code/pc/settings.py` | 串口、相机、运动和安全参数 |
 | `code/vision/` | 视觉识别与标定源码 |
-| `config/` | 当前流程实际读取的标定与点位补偿 JSON |
+| `config/` | 当前流程实际读取的标定、点位补偿与传感器配置 JSON |
 | `firmware/` | Arduino 运动固件源码 |
 | `tools/rs485/source/` | RS485 工具源码、构建脚本和独立依赖清单 |
 | `tools/rs485/release/` | RS485 已发布 EXE 和使用说明 |
@@ -20,7 +21,7 @@
 | `hardware/ip42/` | IP42 驱动器手册、接线图和完整调试软件 |
 | `runtime/` | 运行时生成的日志和识别结果，不提交 Git |
 | `tests/` | 无硬件自动检查及独立的转盘手动检查脚本 |
-| `docs/` | 第三方源码许可证及不参与运行的点位记录 |
+| `docs/` | 第三方源码许可证、工作方案/参数表、演示视频及不参与运行的点位记录 |
 
 ## 代码文件用途
 
@@ -33,6 +34,10 @@
 - `vision_workflows.py`：腹部和头部视觉任务的流程控制、坐标换算和移动前检查。
 - `vis_head.py`：头部点位的实际图像识别，由 `vision_workflows.py` 调用。
 - `xy_coordinate_transform.py`：像素坐标转机械 XY 坐标，由视觉流程调用。
+- `force_sensor.py`：RS485 力/称重传感器后台读取（供钻孔阶跃检测和数据落盘）。
+- `step_detect.py`：阶跃（刺穿跌落）检测器，纯逻辑、可离线回放与单测。
+- `drill_cycle.py`：钻孔状态机：传感器阶跃 -> 停钻 -> 抬升；含安全限深、超时与故障中止。
+- `drill_workflows.py`：`DC` 命令的串口与传感器编排；传感器链路参数在 `config/force_sensor.json`。
 - `settings.py`：串口、相机、运动和安全阈值，以及各配置文件路径。换电脑时优先核对这里。
 
 **`code/vision/`（图像处理）**
@@ -44,7 +49,7 @@
 
 视觉模块原有的独立依赖清单与根目录 `requirements.txt` 重复，因此整理版只保留根目录的一份。
 
-`tests/manual_turntable/` 的三个脚本是分步骤验证转盘使能、转动及三个工具位的**手动硬件检查**，主程序不依赖它们；不要在无人监护时运行。`tests/test_motion_safety.py` 是不接设备的自动检查，方便改动后确认关键保护仍在。`tests/` 对实际运行不是必需，但建议随源码保留。
+`tests/manual_turntable/` 的三个脚本是分步骤验证转盘使能、转动及三个工具位的**手动硬件检查**，主程序不依赖它们；不要在无人监护时运行。`tests/manual_drill/` 是钻孔现场工具：`drill_console.py`（手动控制 + RUN 钻孔）和 `scan_sensor.py`（传感器寄存器/按压诊断），同样需要有人监护。`tests/test_motion_safety.py` 是不接设备的自动检查，方便改动后确认关键保护仍在。`tests/test_force_sensor.py`、`test_step_detect.py`、`test_drill_cycle.py`、`test_e2e_mock_slave.py` 是钻孔/传感器模块的离线检查，不接设备也不开真实串口。`tests/` 对实际运行不是必需，但建议随源码保留。
 
 `docs/DM_Control_Python_LICENSE` 是 `DM_CAN.py` 上游源码的 MIT 许可文本。上传 GitHub 分享源码时应保留；它不参与程序运行。`docs/reference/vision_position.json` 记录了旧机位测量信息，当前程序不读取它；实际运行参数在 `settings.py`。
 
@@ -57,7 +62,7 @@ python -m pip install -r requirements.txt
 python code/pc/motion_client.py
 ```
 
-RS485 工具使用独立依赖：`tools/rs485/source/requirements.txt`。已经构建的程序见 `tools/rs485/release/`；接线与操作先看该目录的说明。Arduino 固件需单独烧录，且上位机会验证固件标识。运行前按实际电脑检查 `code/pc/settings.py` 的串口、相机和运动参数，以及 `config/` 中的标定数据。
+RS485 工具使用独立依赖：`tools/rs485/source/requirements.txt`。已经构建的程序见 `tools/rs485/release/`；接线与操作先看该目录的说明。Arduino 固件需单独烧录，且上位机会验证固件标识。运行前按实际电脑检查 `code/pc/settings.py` 的串口、相机和运动参数，以及 `config/` 中的标定数据。钻孔命令 `DC` 需要独立的力传感器串口（在 `config/force_sensor.json` 配置 COM 口）；运行 `DC` 前确认没有其他程序占用该串口（RS485 GUI/串口助手先关闭）。
 
 `motion_client.py` 退出时仍会向 Arduino 发送安全停止指令。首次接入实体设备时，请在操作员监护下确认串口和当前位置；自动视觉移动依赖实际机械回零、位置反馈及标定。
 

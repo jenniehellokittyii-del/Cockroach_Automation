@@ -1,0 +1,11 @@
+{
+  "mode": "serial",
+  "port": "COM6",
+  "baudrate": 19200,
+  "unit": 1,
+  "register": 40000,
+  "count": 2,
+  "high_word_first": true,
+  "signed": true,
+  "scale": 1.0
+}
