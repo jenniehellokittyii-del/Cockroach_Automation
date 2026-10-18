@@ -10,6 +10,11 @@
 python tests\manual_drill\drill_console.py
 ```
 
+也可以直接双击：
+
+- `run_drill_test.bat` —— real 模式（需要传感器）
+- `run_drill_test_dry.bat` —— dry 模式（不接传感器，钻到限深停）
+
 - 自动连接 Arduino（校验固件 + 发 E）与力传感器（默认 `COM6` / 19200；可在 `--sensor-port` 覆盖）
 - `drill>` 控制台：`X/Y/Z/B` 相对移动、`G0/M0`、`POS`、`DRILL ...`、`E`
 - `RUN` 按当前参数钻孔（断开/超时/限深都会 `STOP` 并抬升）
@@ -21,6 +26,15 @@ python tests\manual_drill\drill_console.py --dry        # 不接传感器，只�
 python tests\manual_drill\drill_console.py --sensor-port COM6 --feed 500 --depth 2000
 ```
 
+## `drill_field_test.py` —— 菜单版备用工具
+
+与上面的控制台功能类似，命令为 `s/m/z/r/d/l/p/c/h/e/q`（按 `?` 看帮助）；适合临时调参。
+它使用标准 `SerialDrillIO`（固件 `ZDOWN`），负 Z 时会由保护逻辑拒绝 `RUN`。
+
+```powershell
+python tests\manual_drill\drill_field_test.py
+```
+
 ## `scan_sensor.py` —— 传感器诊断
 
 寄存器快照 + 按压测试（判断力是否进入变送器）：
@@ -28,6 +42,10 @@ python tests\manual_drill\drill_console.py --sensor-port COM6 --feed 500 --depth
 ```powershell
 python tests\manual_drill\scan_sensor.py
 ```
+
+## 演示视频
+
+`docs/videos/钻孔成功_20261017.mp4` —— 现场完整循环：下钻 → 刺穿触发 → 停钻 → 抬升。
 
 ## 安全
 
