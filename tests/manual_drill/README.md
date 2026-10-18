@@ -45,7 +45,8 @@ python tests\manual_drill\scan_sensor.py
 
 ## 演示视频
 
-`docs/videos/钻孔成功_20261017.mp4` —— 现场完整循环：下钻 → 刺穿触发 → 停钻 → 抬升。
+- `docs/videos/钻孔成功_20261017.mp4` —— 现场完整循环：下钻 → 刺穿触发 → 停钻 → 抬升
+- `docs/videos/钻孔正面视角_20261017.mp4` —— 钻孔现场正面视角
 
 ## 安全
 
