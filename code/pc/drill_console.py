@@ -37,6 +37,7 @@ from serial_motion import (BAUD, pick_port, open_verified_arduino, send,
 from drill_workflows import SerialDrillIO
 from force_sensor import ForceSensor, load_config as load_sensor_config
 from drill_cycle import DrillParams, run_drill_cycle
+from step_detect import StepDetector
 from settings import DRILL_EVENT_LOG_DIR
 
 # ==================== 现场参数（只改这里） ====================
@@ -171,6 +172,30 @@ def run_cycle(ser, sensor, params):
         print('未正常完成：请人工确认机构状态后再操作')
 
 
+def print_console_help(params, sensor):
+    detector = StepDetector()
+    sensor_text = 'dry（不接传感器）' if sensor is None else sensor.describe()
+    print(f"""
+================ 钻孔现场操作台 ================
+当前参数：进给 {params.feed_speed:g} 步/秒｜限深 {params.safe_depth_steps} 步（{params.safe_depth_steps / 100:.2f} mm）
+          抬升 {params.lift_steps} 步（{params.lift_steps / 100:.2f} mm）｜超时 {params.timeout_seconds:g} s
+检测参数：sigma_k={detector.sigma_k:g} load_k={detector.load_k:g} min_noise={detector.min_noise:g}
+          min_drop={detector.min_drop:g} confirm={detector.confirm_samples}（step_detect 默认，与 DC 一致）
+传感器：  {sensor_text}
+命令：
+  X100 / Y-50 / Z200 / B10   相对移动（Z+ 向下）
+  G0 X1000 Y2000 Z500        绝对步数移动
+  M0 X50 Y30 Z10             绝对毫米移动
+  POS / ZERO                 查询坐标 / 坐标清零（不移动机械）
+  A [N]                      快速下降（不转钻头，默认 500 步）
+  RUN                        开始钻孔（阶跃停钻 + 安全限深 + 抬升）
+  F                          读一次力值
+  E                          急停（固件同时关钻头）
+  Q                          退出（自动发 E）
+================================================
+""")
+
+
 def main():
     parser = argparse.ArgumentParser(description='钻孔现场操作台（精简版）')
     parser.add_argument('--serial-port', help='Arduino 串口（默认自动识别）')
@@ -211,10 +236,7 @@ def main():
             ser.close()
             return
 
-    print("""
-命令：X100 / Y-50 / Z200 / B10 相对移动；G0/M0 绝对移动；POS；ZERO
-      A [N] 快速下降（不转钻头）；RUN 钻孔；F 读力值；E 急停；Q 退出
-""")
+    print_console_help(params, sensor)
     try:
         while True:
             try:
@@ -227,7 +249,7 @@ def main():
             if up in ('Q', 'QUIT', 'EXIT'):
                 break
             if up == '?':
-                print('X/Y/Z/B、G0、M0、POS、ZERO、A [N]、RUN、F、E、Q')
+                print_console_help(params, sensor)
                 continue
             if up == 'RUN':
                 run_cycle(ser, None if args.dry else sensor, params)
