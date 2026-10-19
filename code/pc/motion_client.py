@@ -5,6 +5,7 @@ from serial_motion import (pick_port, open_verified_arduino, send, read_response
                            normalize_motion_command)
 from turntable import Turntable, handle_turntable
 from vision_workflows import run_automatic_vision, run_visual_head
+from drill_workflows import run_automatic_drill
 
 def cmd_mode(ser, tt):
     while True:
@@ -32,6 +33,10 @@ def cmd_mode(ser, tt):
             continue
         if line.upper() in ('VIS_HEAD_FAST', 'VIS_HEADF'):
             run_visual_head(ser, skip_home=True)
+            continue
+        # 钻孔循环：传感器阶跃 -> 停钻 -> 抬升（需要传感器串口可用）
+        if line.upper() in ('DC', 'DRILLCYCLE'):
+            run_automatic_drill(ser)
             continue
         # 转盘指令（以 T 开头，走 USB-CAN，不发给 Arduino）
         if line.upper().startswith('T'):
@@ -121,6 +126,7 @@ def print_usage():
     print("  VIS_FAST (VISF)           已确认零点时跳过归零，安全返回视觉位后识别")
     print("  VIS_HEAD                  归零识别头部4点，并按编号逐点移动XY")
     print("  VIS_HEAD_FAST (VIS_HEADF) 已完成VIS_HEAD时跳过归零，再次识别头部4点")
+    print("  DC (DRILLCYCLE)           传感器阶跃停钻→抬升（需XY已在孔位；传感器串口独立）")
     print("  SPEED500 (V500)        设置速度")
     print("  ZDOWN (ZD)             Z轴持续向下，直到停止或触发下限位")
     print("  E                      单字母安全停止（立即停全部运动和钻头）")
