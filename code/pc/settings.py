@@ -51,6 +51,10 @@ VISION_OUTPUT_ROOT = PROJECT_ROOT / 'runtime' / 'vision_output' / 'auto'
 VISION_HEAD_OUTPUT_ROOT = PROJECT_ROOT / 'runtime' / 'vision_output' / 'head_auto'
 VISION_SHOW_RESULT = True
 
+# ---------------- 钻孔循环（DC 命令）配置 ----------------
+FORCE_SENSOR_CONFIG = PROJECT_ROOT / 'config' / 'force_sensor.json'
+DRILL_EVENT_LOG_DIR = PROJECT_ROOT / 'runtime' / 'motion_logs'
+
 # ---------------- 转盘电机（USB-CAN）配置 ----------------
 TURNTABLE_PORT = 'COM10'   # USB-CAN 模块在设备管理器里的 COM 号
 TURNTABLE_BAUD = 921600
