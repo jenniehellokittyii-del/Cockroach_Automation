@@ -1,0 +1,1 @@
+date,operator,run_id,tool_electrode,tool_drill,drill_duty,feed_speed,safe_depth_steps,lift_steps,z_start,z_stop,depth_steps,status,sensor_min,sensor_max,offset_steps,insert_steps,log_file,video_file,notes

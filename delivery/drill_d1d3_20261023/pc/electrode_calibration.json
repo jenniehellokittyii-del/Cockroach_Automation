@@ -1,0 +1,11 @@
+{
+  "saved_at": "2026-10-23T11:43:19",
+  "tool_electrode": 1,
+  "tool_drill": 2,
+  "z_stop": 2000,
+  "z_contact": 2000,
+  "offset_steps": 0,
+  "offset_mm": 0.0,
+  "insert_steps": 0,
+  "source": "manual"
+}

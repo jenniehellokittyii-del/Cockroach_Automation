@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "calibrated_at": "2026-09-27",
+  "capture_position_steps": {"X": 1550, "Y": -1770, "Z": 7500},
+  "coordinate_convention": {
+    "pixel_origin": "full_4k_image_top_left",
+    "pixel_axes": "+u right, +v down",
+    "machine_axes": "Arduino absolute X/Y steps"
+  },
+  "reference_steps": [1550.0, -1770.0],
+  "reference_p2_center_px": [1759.611328125, 1521.780029296875],
+  "pixels_per_step": [
+    [-0.021600341796875, 1.0962878417968747],
+    [-1.1050024414062498, -0.04183715820312499]
+  ],
+  "steps_per_pixel": [
+    [-0.03451043885635226, -0.9043007737190787],
+    [0.9114892317763104, -0.017817588643047104]
+  ],
+  "fit_rms_error_px": 0.32296419819314276,
+  "reference_image": "../vision_output/xy_recal_20260927/base_x1550_y-1770_z7500/raw_00.jpg",
+  "method": "SIFT target-plane registration with affine RANSAC",
+  "samples": [
+    {
+      "name": "x_minus_100",
+      "use_for_fit": true,
+      "steps": [1450.0, -1770.0],
+      "step_delta": [-100.0, 0.0],
+      "pixel_delta": [2.1600341796875, 110.500244140625],
+      "matches": 852,
+      "inliers": 529,
+      "median_reprojection_error_px": 0.844
+    },
+    {
+      "name": "y_plus_100",
+      "use_for_fit": true,
+      "steps": [1550.0, -1670.0],
+      "step_delta": [0.0, 100.0],
+      "pixel_delta": [109.2335205078125, -4.19873046875],
+      "matches": 782,
+      "inliers": 385,
+      "median_reprojection_error_px": 0.8427
+    },
+    {
+      "name": "y_minus_100",
+      "use_for_fit": true,
+      "steps": [1550.0, -1870.0],
+      "step_delta": [0.0, -100.0],
+      "pixel_delta": [-110.0240478515625, 4.168701171875],
+      "matches": 762,
+      "inliers": 423,
+      "median_reprojection_error_px": 0.9818
+    }
+  ],
+  "notes": "Valid only at Z=7500 with the current camera, focus, fixture plane, and lighting geometry. X/Y directions matched the previous calibration, but the effective image scale is smaller, so the former Z=8020 matrix must not be reused."
+}

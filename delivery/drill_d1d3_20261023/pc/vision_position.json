@@ -1,0 +1,20 @@
+{
+  "calibrated_at": "2026-09-30",
+  "coordinate_basis": "absolute step coordinates after HOME",
+  "position_steps": {
+    "X": 1666,
+    "Y": -1603,
+    "Z": 8908,
+    "B": 0
+  },
+  "position_mm": {
+    "X": 99.96,
+    "Y": -96.18,
+    "Z": 89.08
+  },
+  "motion_mode": "continuous G0: XY together, then Z",
+  "move_order": ["HOME", "XY", "Z"],
+  "command": "VISION",
+  "reference_image": "vision_output/lighting_adjusted_20260930/raw_00.jpg",
+  "notes": "2026-09-30 measured from the user's manually adjusted full-head view with the new BOOTPOS command. First HOME reported net travel X=-1666, Y=1603, Z=-8908, so the power-on view is X=1666, Y=-1603, Z=8908. Former P2 circles were not verified real black spots. On 2026-10-09 automatic candidate selection was re-enabled by user request: sort pairs head-to-tail and select the penultimate pair, without a fixed-ratio band. True P2 accuracy remains unverified. VIS can send target XY after its checks pass; the existing Z=7500 pixel calibration and historical tool offset need revalidation at Z=8908 before hardware positioning. The fixture orientation is fixed head-left/tail-right."
+}
