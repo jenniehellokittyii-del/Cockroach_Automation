@@ -1,0 +1,20 @@
+{
+  "strategy": "dachuang_points_5_6_local_numbers_1_2",
+  "updated_at": "2026-11-06",
+  "coordinate_convention": "correction_steps = manually_aligned_xy - automatic_target_xy",
+  "correction_steps_by_point_number": {
+    "1": {
+      "X": 0,
+      "Y": 130,
+      "calculated_target_xy_steps": {"X": 666, "Y": -1900},
+      "manually_aligned_xy_steps": {"X": 666, "Y": -1770}
+    },
+    "2": {
+      "X": -35,
+      "Y": 170,
+      "calculated_target_xy_steps": {"X": 855, "Y": -1904},
+      "manually_aligned_xy_steps": {"X": 820, "Y": -1734}
+    }
+  },
+  "note": "User-measured XY residuals for the new strategy. Added after the common tool offset. Z is excluded."
+}

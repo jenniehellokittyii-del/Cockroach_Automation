@@ -1,0 +1,32 @@
+{
+  "strategy": "dachuang_points_1_4",
+  "updated_at": "2026-11-06",
+  "coordinate_convention": "correction_steps = manually_aligned_xy - automatic_target_xy",
+  "correction_steps_by_point_number": {
+    "1": {
+      "X": -40,
+      "Y": 80,
+      "calculated_target_xy_steps": {"X": 714, "Y": -1216},
+      "manually_aligned_xy_steps": {"X": 674, "Y": -1136}
+    },
+    "2": {
+      "X": -10,
+      "Y": 70,
+      "calculated_target_xy_steps": {"X": 825, "Y": -1215},
+      "manually_aligned_xy_steps": {"X": 815, "Y": -1145}
+    },
+    "3": {
+      "X": -30,
+      "Y": 80,
+      "calculated_target_xy_steps": {"X": 709, "Y": -1319},
+      "manually_aligned_xy_steps": {"X": 679, "Y": -1239}
+    },
+    "4": {
+      "X": 0,
+      "Y": 80,
+      "calculated_target_xy_steps": {"X": 803, "Y": -1322},
+      "manually_aligned_xy_steps": {"X": 803, "Y": -1242}
+    }
+  },
+  "note": "User-measured XY residuals for the new strategy. Added after the common tool offset. Z is excluded."
+}

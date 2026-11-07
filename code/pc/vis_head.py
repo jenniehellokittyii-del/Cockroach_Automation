@@ -3,7 +3,7 @@
 
 独立代码文件用途：
     1. 调用相机采集多帧
-    2. 调用视觉/head.py 检测头部四点
+    2. 调用大创六点策略检测头部四点（源编号1–4）
     3. 对成功帧取中位数
     4. 在窗口显示头部四点，仅返回像素坐标，不保存文件
 
@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # ---------------- VIS_HEAD 可调参数 ----------------
 CAMERA_NAME = 'LRCP imx317'
@@ -27,7 +27,7 @@ SAMPLE_INTERVAL_SECONDS = 2.0
 CAPTURE_TIMEOUT_SECONDS = 30.0
 SETTLE_SECONDS = 2.0
 MIN_SUCCESSFUL_FRAMES = 5
-SPLIT_RATIO = 0.62
+SPLIT_RATIO = 0.62  # 仅兼容旧调用；大创几何策略不使用此参数
 SHOW_CAPTURE_PREVIEW = True
 HEAD_CAPTURE_WINDOW_NAME = 'VIS_HEAD - head P1 P2 P3 P4 capture'
 HEAD_RESULT_WINDOW_NAME = 'VIS_HEAD - head pixel points (Q / ESC / close to continue)'
@@ -35,7 +35,7 @@ HEAD_RESULT_WINDOW_NAME = 'VIS_HEAD - head pixel points (Q / ESC / close to cont
 
 def _add_vision_path():
     """让本模块能够导入项目中的视觉识别代码。"""
-    vision_dir = PROJECT_ROOT / 'code' / 'vision'
+    vision_dir = PROJECT_ROOT / '视觉'
     if str(vision_dir) not in sys.path:
         sys.path.insert(0, str(vision_dir))
     return vision_dir
@@ -79,12 +79,12 @@ def _draw_head_preview(image, points):
 
 def build_head_capture_preview(image, captured_count, count, split_ratio=SPLIT_RATIO):
     """采图时调用头部算法，避免使用腹部 P2 预览。"""
-    from head import detect_head_points
+    from dachuang_strategy import detect_head_points
 
     try:
-        points, _ = detect_head_points(image, split_ratio=split_ratio)
+        points, info = detect_head_points(image, split_ratio=split_ratio)
         shown = _draw_head_preview(image, points)
-        status = 'HEAD DETECTED' if np.isfinite(points).all() else 'HEAD POINTS INCOMPLETE'
+        status = info['method'] if np.isfinite(points).all() else 'HEAD POINTS INCOMPLETE'
     except Exception as exc:
         shown = _draw_head_preview(image, [(np.nan, np.nan)] * 4)
         status = f'HEAD NOT DETECTED: {str(exc)[:72]}'
@@ -135,8 +135,11 @@ def capture_and_detect_head(
     """
     _add_vision_path()
 
-    from head import detect_head_points
+    from dachuang_strategy import detect_head_points
     from live_abdomen_detection import capture_frames
+    from dachuang_strategy import MODE
+
+    print(f'VIS_HEAD: 大创六点策略，mode={MODE}，使用源点 P1–P4（非旧象限算法）')
 
     print(f'VIS_HEAD: 机构稳定 {settle_seconds:.0f}s 后开始头部识别')
     time.sleep(settle_seconds)
@@ -157,7 +160,7 @@ def capture_and_detect_head(
     valid_results = []
     for index, frame in enumerate(frames):
         try:
-            points, _ = detect_head_points(
+            points, info = detect_head_points(
                 frame,
                 split_ratio=split_ratio,
             )
@@ -167,6 +170,7 @@ def capture_and_detect_head(
             ):
                 print(f'VIS_HEAD: 第 {index + 1} 帧四点不完整，已跳过')
                 continue
+            print(f"VIS_HEAD: 第 {index + 1} 帧 {info['method']}")
             valid_results.append((index, points))
         except Exception as exc:
             print(f'VIS_HEAD: 第 {index + 1} 帧识别失败，已跳过：{exc}')
