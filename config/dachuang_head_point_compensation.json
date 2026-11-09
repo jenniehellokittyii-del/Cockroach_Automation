@@ -1,6 +1,8 @@
 {
   "strategy": "dachuang_points_1_4",
   "updated_at": "2026-11-06",
+  "source_point_numbers": [1, 2, 3, 4],
+  "workflow_local_point_numbers": [1, 2, 3, 4],
   "coordinate_convention": "correction_steps = manually_aligned_xy - automatic_target_xy",
   "correction_steps_by_point_number": {
     "1": {

@@ -41,7 +41,8 @@ class MotionSafetyTests(unittest.TestCase):
         with patch.object(vision, 'query_positions', return_value=current), \
                 patch.object(motion, 'motion_fault', None):
             with self.assertRaises(ValueError):
-                vision.check_vision_xy_move(object(), {'X': 851, 'Y': 0})
+                vision.check_vision_xy_move(
+                    object(), {'X': vision.VISION_MAX_XY_MOVE_STEPS + 1, 'Y': 0})
 
     def test_cli_resets_shared_home_state(self):
         with patch('builtins.input', side_effect=['HOME', 'exit']), \

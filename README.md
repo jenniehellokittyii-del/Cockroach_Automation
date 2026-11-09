@@ -1,5 +1,38 @@
 # Cockroach Automation
 
+## 当前整体流程（取电极、头部定位与 D1–D3）
+
+双击根目录 `run_automation.bat`，启动
+`code/pc/automation_console.py`。打开程序连接 Arduino 后会立即 HOME（Z → Y → X），
+不是脱离电脑运行的固件上电动作。
+
+1. 归零并确认坐标后，询问取哪一个供料口，输入 `1–12` 或 `P1–P12` 开始，`Q` 或回车取消。
+2. 复用 `feed_port_positioner.py`：按 `FEED_PORTS` 中的最新绝对坐标到所选供料口。
+   电极靠电磁铁吸取，没有夹取动作或新增电磁铁开关指令。
+3. 取料定位后 Z 抬升1000步（当前点位 Z=11685，抬升至10685，不越过归零高度），到位后再询问是否视觉识别。
+4. 输入 `y`，先抬 Z 到20，再按绝对坐标到视觉位 X=1666、Y=-1603、Z=8908，
+   不重复 HOME。使用 `vis_head.py` 的头部四点识别、头部点位补偿及原有位移检查。
+5. 识别完成后输入 `P2` 或 `2` 选择点，机构移动到该点的绝对 XY，保持视觉 Z 高度，
+   关闭头部结果图窗口（或在图像窗口按 Q/Esc）后，控制台会出现选点提示。
+6. 所选点到位后保持 XY，按绝对坐标抬升至当前 `SAFE`（现场值5908），
+   显示 SAFE/DRILLSTART/OFFSET/INSERT，再询问是否开始 D1–D3。
+7. 确认电极头当前处于工具1，输入 `y` 后自动 TZ → TE → D1 → D2 → D3。
+   复用现有 `run_full`，D1 必须成功检测刺穿并确认抬升、停钻和回到安全高度才继续。
+   D3 完成后返回 SAFE，关闭转盘连接，结束本轮，不自动取下一号电极。
+   当前参数为 SAFE=5908、DRILLSTART=7908、OFFSET=0、INSERT=1850；
+   实际读取 `config` 与优先覆盖它的 `runtime/drill_state.json`，不会强制覆盖现场值。
+
+提示中输入 `n`/`q` 可以取消；定位完成后的命令为 `VIS`/`VIS_HEAD`、`POS`、`Q`。
+本自动化入口中 `VIS` 和 `VIS_HEAD` 都调用头部识别；独立调试控制台仍分别保留腹部 VIS 与头部 VIS_HEAD。
+识别或换算失败时询问是否重新识别：输入 `y` 后确认机构仍在视觉位并重新采图，
+不会重复取料或回零；输入 `n`/`q`/回车则结束流程。运动失败不进入识别重试。
+`VIS` 同样不归零。归零、取料、抬升或视觉失败时停止后续流程。
+当前每次启动选取一个供料口，不自动轮换。取料和视觉定位速度由原500提高到650步/秒，
+由 `automation_console.py` 的 `POSITIONING_SPEED` 设置；每阶段结束后恢复配置中的 `normal_speed`。
+归零速度、钻孔进给速度和转盘速度保持原设置；速度设置未获固件确认时停止流程。
+电磁铁需已具备吸取条件，开始本轮时电极头应处于取料/工具1位置。
+只有在选点、抬升并确认后才连接转盘；当前 `drill_duty=0` 保持现场测试设定。
+
 蟑螂自动化装配系统当前在用版本的整理目录。运动入口是 `code/pc/motion_client.py`；此目录从原 `pc/motion_client.py` 拆分，控制流程、参数和安全判断保持原样。
 
 ## 目录
@@ -74,3 +107,35 @@ python -m unittest discover -s tests -v
 ## 来源说明
 
 `code/pc/DM_CAN.py` 来源于目录外原有的 `pc/DM_CAN.py`。其上游项目的许可证副本见 `docs/DM_Control_Python_LICENSE`。原目录中的历史日志、调试图像、缓存、相机探测依赖副本和旧版本未纳入此整理目录。
+
+## 钻孔 D1-D3
+
+- 入口：`python code/pc/drill_console.py`，或双击 `run_drill_test.bat`；此入口保留 D1–D3 流程
+- 此测试入口已整合 `motion_client.py` 的运动/视觉命令，共用一个 Arduino 连接。
+  支持 HOME/HX/HY/HZ、VIS/VIS_FAST、VIS_HEAD/VIS_HEAD_FAST、JOG、PWM、LIM/DIAG/BOOTPOS 等。
+  启动后等待命令，不自动归零或取料。`VIS` 保留原行为（先归零）；
+  已执行 HOME 时可输入 `VIS_FAST` 跳过归零。视觉点位可输入 `P2` 或 `2`。
+  回零、清零或使用带回零的 VIS 后清除旧 Z_STOP，D3 前需重新 D1 或人工 ZSTOP。
+  D1–D3 的实际运动和参数仍沿用原实现；`run_automation.bat` 另接入取料→头部选点→确认→D1–D3。
+- 流程：`TZ -> TE -> D1 -> D2 -> D3 -> Q`；`FULL` / `RUN` 执行三阶段；`DC` 只跑钻孔核心
+- 配置：`config/drill_params.json`（工具映射、进给、限深、抬升、`drill_duty`、ECAL、D3 速度）
+- 标定初始值：`config/safe_z.json`、`config/drill_start_z.json`、`config/electrode_calibration.json`
+- 运行状态：`runtime/drill_state.json`，程序生成，不修改 config
+- 当前：T1=电极、T2=钻孔，`drill_duty=0`（D1 下 Z、钻头不转），限深 2500 步，抬升 2000 步，D3 速度 500 步/秒
+- `Z_STOP` 每次 D1 更新；视觉与转盘原功能保留，`motion_client.py` 的 `DC` 复用同一钻孔核心
+
+## D1 力曲线观察窗口
+
+`run_automation.bat` 启动并连接 Arduino 后会自动打开独立力曲线窗口，退出自动化程序时关闭。
+窗口只读取 `runtime/motion_logs/sensor_*.csv`，不占用传感器串口，不参与停钻或运动控制。
+监视模式先显示最新已有记录，再自动切换到后续新记录；关闭窗口不影响自动化运行。
+“疑似刺穿”是曲线的独立估计，钻头动画按时间近似，均不代表设备实际状态；
+实际刺穿与 D1 成功仍以控制台及钻孔结果为准。纵轴为原始 raw 值。
+
+安装依赖：`python -m pip install -r requirements.txt`（窗口需要 matplotlib 和 Python Tk 支持）。
+也可从仓库根目录手动运行：
+
+```powershell
+python tools/drill_plot/force_plot.py --watch runtime/motion_logs --show-now
+python tools/drill_plot/force_plot.py --csv runtime/motion_logs/sensor_xxx.csv
+```

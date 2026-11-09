@@ -100,6 +100,8 @@ def prompt_vision_point_index(points, allowed_indices, prompt):
         choice = input(prompt).strip().lower()
         if choice in ('q', 'quit', 'exit'):
             return None
+        if choice.startswith('p'):
+            choice = choice[1:]
         if choice.isdigit():
             index = int(choice) - 1
             if index in allowed_indices:
@@ -111,7 +113,8 @@ def capture_and_calculate_vision_target():
     vision_dir = PROJECT_ROOT / 'code' / 'vision'
     if str(vision_dir) not in sys.path:
         sys.path.insert(0, str(vision_dir))
-    from abdomen_spot_detector import detect_multiframe, imwrite_unicode
+    from abdomen_spot_detector import imwrite_unicode
+    from dachuang_strategy import detect_multiframe, build_capture_preview
     from live_abdomen_detection import capture_frames
 
     print(f'VISION: 机构稳定 {VISION_SETTLE_SECONDS:.0f}s 后开始约20s视觉识别')
@@ -123,6 +126,7 @@ def capture_and_calculate_vision_target():
         timeout_seconds=VISION_CAPTURE_TIMEOUT_SECONDS,
         show_preview=VISION_SHOW_RESULT,
         preview_width=1280,
+        preview_builder=build_capture_preview,
     )
     result = detect_multiframe(frames)
     successful = int(result['successful_frames'])
@@ -218,7 +222,7 @@ def capture_and_calculate_vision_target():
         'remaining_indices': set(range(len(points))) - {point_index},
     }
 
-def run_automatic_vision(ser, skip_home=False):
+def run_automatic_vision(ser, skip_home=False, single_point=False, retry_capture=None):
     """进入视觉位、稳定识别并移动到针轴 XY；不换头、不动目标 Z。"""
     position_ready = (
         goto_vision_position_without_home(ser)
@@ -226,12 +230,26 @@ def run_automatic_vision(ser, skip_home=False):
     )
     if not position_ready:
         return False
-    try:
-        session = capture_and_calculate_vision_target()
-        target = session['first_calculation']['target_xy_steps']
-    except Exception as exc:
-        print(f'VISION: 识别或换算失败，停在视觉位，未发送目标移动：{exc}')
-        return False
+    while True:
+        try:
+            session = capture_and_calculate_vision_target()
+            target = session['first_calculation']['target_xy_steps']
+            break
+        except Exception as exc:
+            print(f'VISION: 识别或换算失败，停在视觉位，未发送目标移动：{exc}')
+            if retry_capture is None:
+                return False
+            if not retry_capture():
+                print('VISION: 已取消重新识别。')
+                return False
+            # 只重试采图；不得把运动失败当成识别失败重新执行。
+            pos = query_positions(ser)
+            if (motion.motion_fault or not motion.vision_reference_ready
+                    or pos is None or pos.get('X2') != pos.get('X')
+                    or any(pos[axis] != VISION_POS_STEPS[axis] for axis in ('X', 'Y', 'Z'))):
+                print(f'VISION: 位置或运动状态异常，禁止重新识别：{pos}；{motion.motion_fault}')
+                return False
+            print('VISION: 保持当前视觉位，重新采图识别（不回零、不重复取料）。')
 
     pos = query_positions(ser)
     expected = VISION_POS_STEPS
@@ -265,7 +283,7 @@ def run_automatic_vision(ser, skip_home=False):
     print(f'VISION: 点位 {first_index + 1} 已到达，当前位置={final_pos}')
 
     remaining = session['remaining_indices']
-    while remaining:
+    while remaining and not single_point:
         next_index = prompt_vision_point_index(
             session['payload']['points'],
             remaining,
@@ -328,12 +346,11 @@ def run_automatic_vision(ser, skip_home=False):
     print(f'VISION COMPLETE: {final_pos}；本阶段未换头、未下降Z')
     return True
 
-def run_visual_head(ser, skip_home=False):
+def run_visual_head(ser, skip_home=False, single_point=False, retry_capture=None):
     """进入视觉位，识别头部四点，并按用户选择逐点移动。"""
     global vis_head_fast_ready
-    if skip_home and not vis_head_fast_ready:
-        print('VIS_HEAD_FAST: 本次程序运行尚未完成过 VIS_HEAD，请先执行一次 VIS_HEAD')
-        return False
+    # 跳过归零只要求本次机械零点已确认，由定位函数检查；
+    # 自动化入口在取料前已经 HOME，不必先运行一次带 HOME 的头部识别。
     position_ready = (
         goto_vision_position_without_home(ser)
         if skip_home else goto_vision_position(ser)
@@ -341,18 +358,28 @@ def run_visual_head(ser, skip_home=False):
     if not position_ready:
         return False
 
-    try:
-        points = capture_and_detect_head()
-        if len(points) != 4:
-            raise ValueError(f'应识别到 4 个头部点，实际得到 {len(points)} 个')
-        calibration = json.loads(VISION_PIXEL_CALIBRATION.read_text(encoding='utf-8'))
-        tool_calibration = json.loads(VISION_TOOL_CALIBRATION.read_text(encoding='utf-8'))
-        head_point_compensation = json.loads(
-            VISION_HEAD_POINT_COMPENSATION.read_text(encoding='utf-8')
-        )
-    except Exception as exc:
-        print(f'VIS_HEAD: 识别失败，停在视觉位：{exc}')
-        return False
+    while True:
+        try:
+            points = capture_and_detect_head()
+            if len(points) != 4:
+                raise ValueError(f'应识别到 4 个头部点，实际得到 {len(points)} 个')
+            calibration = json.loads(VISION_PIXEL_CALIBRATION.read_text(encoding='utf-8'))
+            tool_calibration = json.loads(VISION_TOOL_CALIBRATION.read_text(encoding='utf-8'))
+            head_point_compensation = json.loads(
+                VISION_HEAD_POINT_COMPENSATION.read_text(encoding='utf-8')
+            )
+            break
+        except Exception as exc:
+            print(f'VIS_HEAD: 头部识别失败，停在视觉位：{exc}')
+            if retry_capture is None or not retry_capture():
+                return False
+            pos = query_positions(ser)
+            if (motion.motion_fault or not motion.vision_reference_ready
+                    or pos is None or pos.get('X2') != pos.get('X')
+                    or any(pos[axis] != VISION_POS_STEPS[axis] for axis in ('X', 'Y', 'Z'))):
+                print(f'VIS_HEAD: 位置或运动状态异常，禁止重试：{pos}；{motion.motion_fault}')
+                return False
+            print('VIS_HEAD: 保持视觉位，重新采图进行头部识别。')
 
     payload = {'points': points}
     remaining = set(range(len(points)))
@@ -442,6 +469,8 @@ def run_visual_head(ser, skip_home=False):
             json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8'
         )
         print(f'VIS_HEAD: P{point_index + 1} 已到达，当前位置={final_pos}')
+        if single_point:
+            break
 
     record['status'] = (
         'all_detected_points_visited'

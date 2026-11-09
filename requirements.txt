@@ -3,3 +3,5 @@ numpy
 opencv-python
 pygrabber
 comtypes
+pymodbus>=3.6
+matplotlib>=3.7
