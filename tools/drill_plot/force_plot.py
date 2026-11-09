@@ -65,31 +65,32 @@ def detect_drop(values):
 
 def newest_new_csv(directory: Path, known: set[Path]):
     try:
-        files = sorted(directory.glob("sensor_*.csv"), key=lambda p: p.stat().st_mtime)
-    except Exception:
+        files = sorted(directory.glob("sensor_*.csv"),
+                       key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)
+    except OSError:
         return None
-    for path in files:
-        if path not in known:
-            known.add(path)
-            return path
-    return None
+    new_files = [path for path in files if path not in known]
+    known.update(files)
+    return new_files[0] if new_files else None
 
 
 def main():
     parser = argparse.ArgumentParser(description="D1 实时力曲线")
-    parser.add_argument("--watch", help="监视目录，等待新的 sensor_*.csv")
-    parser.add_argument("--csv", help="直接读取指定 CSV")
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--watch", help="监视目录，等待新的 sensor_*.csv")
+    inputs.add_argument("--csv", help="直接读取指定 CSV")
     parser.add_argument("--interval", type=float, default=0.2)
     parser.add_argument("--show-now", action="store_true", help="watch 模式下立即显示等待窗口")
     args = parser.parse_args()
+    if args.interval <= 0:
+        parser.error("--interval 必须大于 0")
 
     watch_dir = Path(args.watch) if args.watch else None
     if watch_dir:
         watch_dir.mkdir(parents=True, exist_ok=True)
     current = Path(args.csv) if args.csv else None
-    known: set[Path] = set()
-    if watch_dir and current is None:
-        known = set(watch_dir.glob("sensor_*.csv"))
+    # 启动前的文件属于历史轮次；watch 只接收启动后新建的记录。
+    known: set[Path] = set(watch_dir.glob('sensor_*.csv')) if watch_dir else set()
 
     fig, (ax, ax2) = plt.subplots(
         2, 1, figsize=(9.0, 6.0),
@@ -102,9 +103,13 @@ def main():
     marker = ax.axvline(0, color="#d4380d", lw=1.5, ls="--", visible=False)
     ax.set_xlabel("时间 / s")
     ax.set_ylabel("raw")
+    ax.set_title("原始传感器曲线；疑似刺穿仅供观察，不代表控制器判定", fontsize=9)
     ax.grid(True, alpha=0.25)
     status = ax.text(0.01, 0.98, "等待 D1 新的 sensor CSV...", transform=ax.transAxes,
                      va="top", ha="left", fontsize=10, color="#666666")
+    data_state = ax.text(0.99, 0.98, "等待本轮 D1 数据" if watch_dir else "历史记录查看",
+                         transform=ax.transAxes, va="top", ha="right", fontsize=9,
+                         color="#666666")
 
     ax2.set_xlim(0, 1)
     ax2.set_ylim(0, 1)
@@ -133,19 +138,29 @@ def main():
     last_size = -1
     last_values = []
     last_times = []
+    last_update = None
 
     while plt.fignum_exists(fig.number):
-        if watch_dir and current is None:
+        if watch_dir:
             new_path = newest_new_csv(watch_dir, known)
             if new_path is not None:
                 current = new_path
                 last_size = -1
                 last_times = []
                 last_values = []
+                last_update = None
+                line.set_data([], [])
+                force_text.set_text("force: -")
+                bit_line.set_ydata([0.84, 0.94])
+                bit_tip.set_ydata([0.84])
                 marker.set_visible(False)
                 sample_patch.set_facecolor("#d9c7a3")
                 phase_text.set_text("等待数据")
                 status.set_text(f"已连接：{current.name}")
+                data_state.set_text("等待本轮首个样本")
+                ax.set_xlim(0, 10)
+                ax.set_ylim(-1, 1)
+                fig.canvas.draw_idle()
                 if hide_until_data:
                     try:
                         win.deiconify()
@@ -164,6 +179,7 @@ def main():
                 last_size = size
                 last_times, last_values = read_csv(current)
                 if last_times:
+                    last_update = time.monotonic()
                     line.set_data(last_times, last_values)
                     x_end = max(10.0, last_times[-1] + 1.0)
                     ax.set_xlim(max(0.0, x_end - 12.0), x_end)
@@ -179,14 +195,20 @@ def main():
                         phase_text.set_text("疑似刺穿")
                     else:
                         marker.set_visible(False)
-                        status.set_text(f"D1 运行中：{current.name}")
-                        phase_text.set_text("下钻中")
+                        status.set_text(f"传感器记录：{current.name}")
+                        phase_text.set_text("曲线观察（不代表设备状态）")
                     force_text.set_text(f"force: {last_values[-1]:.1f}")
                     elapsed = last_times[-1]
                     bit_y = max(0.40, 0.84 - min(1.0, elapsed / 6.0) * 0.44)
                     bit_line.set_ydata([bit_y, 0.94])
                     bit_tip.set_ydata([bit_y])
                     fig.canvas.draw_idle()
+        if watch_dir and last_update is not None:
+            if time.monotonic() - last_update >= 2.0:
+                data_state.set_text("数据暂未更新，保留本轮曲线")
+            else:
+                data_state.set_text("实时数据更新中")
+            fig.canvas.draw_idle()
         plt.pause(args.interval)
 
     plt.close(fig)

@@ -6,10 +6,10 @@
 `code/pc/automation_console.py`。打开程序连接 Arduino 后会立即 HOME（Z → Y → X），
 不是脱离电脑运行的固件上电动作。
 
-1. 归零并确认坐标后，询问是否取1号电极，输入 `y` 开始。
-2. 复用 `feed_port_positioner.py`：到1号供料口 X=506、Y=-2037、Z=11185。
+1. 归零并确认坐标后，询问取哪一个供料口，输入 `1–12` 或 `P1–P12` 开始，`Q` 或回车取消。
+2. 复用 `feed_port_positioner.py`：按 `FEED_PORTS` 中的最新绝对坐标到所选供料口。
    电极靠电磁铁吸取，没有夹取动作或新增电磁铁开关指令。
-3. 取料定位后 Z 抬升1000步到10185（不越过归零高度），到位后再询问是否视觉识别。
+3. 取料定位后 Z 抬升1000步（当前点位 Z=11685，抬升至10685，不越过归零高度），到位后再询问是否视觉识别。
 4. 输入 `y`，先抬 Z 到20，再按绝对坐标到视觉位 X=1666、Y=-1603、Z=8908，
    不重复 HOME。使用 `vis_head.py` 的头部四点识别、头部点位补偿及原有位移检查。
 5. 识别完成后输入 `P2` 或 `2` 选择点，机构移动到该点的绝对 XY，保持视觉 Z 高度，
@@ -27,7 +27,9 @@
 识别或换算失败时询问是否重新识别：输入 `y` 后确认机构仍在视觉位并重新采图，
 不会重复取料或回零；输入 `n`/`q`/回车则结束流程。运动失败不进入识别重试。
 `VIS` 同样不归零。归零、取料、抬升或视觉失败时停止后续流程。
-当前每次启动只取1号，尚未启用2–12号轮换。
+当前每次启动选取一个供料口，不自动轮换。取料和视觉定位速度由原500提高到650步/秒，
+由 `automation_console.py` 的 `POSITIONING_SPEED` 设置；每阶段结束后恢复配置中的 `normal_speed`。
+归零速度、钻孔进给速度和转盘速度保持原设置；速度设置未获固件确认时停止流程。
 电磁铁需已具备吸取条件，开始本轮时电极头应处于取料/工具1位置。
 只有在选点、抬升并确认后才连接转盘；当前 `drill_duty=0` 保持现场测试设定。
 
@@ -121,3 +123,19 @@ python -m unittest discover -s tests -v
 - 运行状态：`runtime/drill_state.json`，程序生成，不修改 config
 - 当前：T1=电极、T2=钻孔，`drill_duty=0`（D1 下 Z、钻头不转），限深 2500 步，抬升 2000 步，D3 速度 500 步/秒
 - `Z_STOP` 每次 D1 更新；视觉与转盘原功能保留，`motion_client.py` 的 `DC` 复用同一钻孔核心
+
+## D1 力曲线观察窗口
+
+`run_automation.bat` 启动并连接 Arduino 后会自动打开独立力曲线窗口，退出自动化程序时关闭。
+窗口只读取 `runtime/motion_logs/sensor_*.csv`，不占用传感器串口，不参与停钻或运动控制。
+监视模式先显示最新已有记录，再自动切换到后续新记录；关闭窗口不影响自动化运行。
+“疑似刺穿”是曲线的独立估计，钻头动画按时间近似，均不代表设备实际状态；
+实际刺穿与 D1 成功仍以控制台及钻孔结果为准。纵轴为原始 raw 值。
+
+安装依赖：`python -m pip install -r requirements.txt`（窗口需要 matplotlib 和 Python Tk 支持）。
+也可从仓库根目录手动运行：
+
+```powershell
+python tools/drill_plot/force_plot.py --watch runtime/motion_logs --show-now
+python tools/drill_plot/force_plot.py --csv runtime/motion_logs/sensor_xxx.csv
+```

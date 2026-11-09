@@ -1,5 +1,6 @@
 """流程检查：所有串口、相机与运动均替换为模拟对象。"""
 import sys
+from contextlib import nullcontext
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -12,18 +13,25 @@ import vision_workflows as vision
 
 
 class AutomationFlowTests(unittest.TestCase):
+    def setUp(self):
+        speed = patch.object(flow, 'positioning_speed', side_effect=lambda c: nullcontext())
+        speed.start()
+        self.addCleanup(speed.stop)
+
     def test_home_failure_never_prompts_or_picks(self):
         with patch.object(flow, 'home', return_value=False), \
                 patch.object(flow, 'confirm') as confirm, \
-                patch.object(flow, 'pickup_first_electrode') as pickup:
+                patch.object(flow, 'choose_feed_port') as choose, \
+                patch.object(flow, 'pickup_electrode') as pickup:
             self.assertFalse(flow.run_startup(Mock()))
             confirm.assert_not_called()
             pickup.assert_not_called()
+            choose.assert_not_called()
 
     def test_cancel_pickup_never_moves_or_starts_vision(self):
         with patch.object(flow, 'home', return_value=True), \
-                patch.object(flow, 'confirm', return_value=False), \
-                patch.object(flow, 'pickup_first_electrode') as pickup, \
+                patch.object(flow, 'choose_feed_port', return_value=None), \
+                patch.object(flow, 'pickup_electrode') as pickup, \
                 patch.object(flow, 'visual_position') as visual:
             self.assertFalse(flow.run_startup(Mock()))
             pickup.assert_not_called()
@@ -32,7 +40,8 @@ class AutomationFlowTests(unittest.TestCase):
     def test_pickup_failure_never_starts_vision(self):
         with patch.object(flow, 'home', return_value=True), \
                 patch.object(flow, 'confirm', return_value=True), \
-                patch.object(flow, 'pickup_first_electrode', return_value=False), \
+                patch.object(flow, 'choose_feed_port', return_value=12), \
+                patch.object(flow, 'pickup_electrode', return_value=False), \
                 patch.object(flow, 'visual_position') as visual:
             self.assertFalse(flow.run_startup(Mock()))
             visual.assert_not_called()
@@ -41,21 +50,22 @@ class AutomationFlowTests(unittest.TestCase):
         events = []
         with patch.object(flow, 'home', side_effect=lambda c: events.append('home') or True), \
                 patch.object(flow, 'confirm', side_effect=lambda p: events.append(p) or True), \
-                patch.object(flow, 'pickup_first_electrode', side_effect=lambda c: events.append('pickup_and_lift') or True), \
+                patch.object(flow, 'choose_feed_port', side_effect=lambda: events.append('choose') or 12), \
+                patch.object(flow, 'pickup_electrode', side_effect=lambda c, n: events.append(('pickup_and_lift', n)) or True), \
                 patch.object(flow, 'visual_and_drill', side_effect=lambda c: events.append('visual') or True):
             self.assertTrue(flow.run_startup(Mock()))
-        self.assertEqual(events, ['home', '是否开始取1号电极？', 'pickup_and_lift',
+        self.assertEqual(events, ['home', 'choose', ('pickup_and_lift', 12),
                                   '是否开始视觉识别流程？', 'visual'])
 
-    def test_pickup_uses_first_port_then_lifts_1000(self):
+    def test_pickup_uses_selected_port_then_lifts_1000(self):
         controller = Mock(fault=None, home_position={'Z': 20})
         controller.query_position.return_value = {'Z': 11185}
         controller.move_absolute.return_value = True
         with patch.object(motion, 'vision_reference_ready', True), \
                 patch.object(motion, 'motion_fault', None), \
                 patch.object(flow, 'move_to_feed_port', return_value=True) as pickup:
-            self.assertTrue(flow.pickup_first_electrode(controller))
-            pickup.assert_called_once_with(controller, 1)
+            self.assertTrue(flow.pickup_electrode(controller, 12))
+            pickup.assert_called_once_with(controller, 12)
             controller.move_absolute.assert_called_once_with({'Z': 10185})
 
     def test_failed_lift_invalidates_reference(self):
@@ -65,7 +75,7 @@ class AutomationFlowTests(unittest.TestCase):
         with patch.object(motion, 'vision_reference_ready', True), \
                 patch.object(motion, 'motion_fault', None), \
                 patch.object(flow, 'move_to_feed_port', return_value=True):
-            self.assertFalse(flow.pickup_first_electrode(controller))
+            self.assertFalse(flow.pickup_electrode(controller, 6))
             self.assertFalse(motion.vision_reference_ready)
 
     def test_vis_skips_home_and_stops_after_one_point(self):
@@ -150,6 +160,66 @@ class AutomationFlowTests(unittest.TestCase):
             move.assert_called_once_with(unittest.mock.ANY, calculation['target_xy_steps'])
             prompt.assert_not_called()
         self.assertEqual(record['point_movements'][0]['point_number'], 2)
+
+
+class SelectionAndSpeedTests(unittest.TestCase):
+    def test_all_ports_accept_number_or_p_prefix(self):
+        for number in range(1, 13):
+            for answer in (str(number), f' p{number} '):
+                with self.subTest(answer=answer), patch('builtins.input', return_value=answer):
+                    self.assertEqual(flow.choose_feed_port(), number)
+
+    def test_invalid_selection_reprompts_and_can_cancel(self):
+        with patch('builtins.input', side_effect=['0', 'P13', 'abc', 'Q']):
+            self.assertIsNone(flow.choose_feed_port())
+
+    def test_positioning_restores_configured_speed_on_success_and_exception(self):
+        for fails in (False, True):
+            controller = Mock(fault=None)
+            controller.read_response.side_effect = ['SPEED=650.00\r\n', 'SPEED=500.00\r\n']
+            with self.subTest(fails=fails), \
+                    patch.object(flow.wf, 'load_params', return_value=Mock(normal_speed=500)), \
+                    patch.object(motion, 'vision_reference_ready', True):
+                def run():
+                    with flow.positioning_speed(controller):
+                        if fails:
+                            raise RuntimeError('movement failed')
+                if fails:
+                    with self.assertRaisesRegex(RuntimeError, 'movement failed'):
+                        run()
+                    controller.emergency_stop.assert_called_once()
+                    self.assertFalse(motion.vision_reference_ready)
+                else:
+                    run()
+                self.assertEqual(controller.send.call_args_list,
+                                 [unittest.mock.call('SPEED 650'), unittest.mock.call('SPEED 500')])
+
+    def test_speed_ack_failure_never_enters_movement(self):
+        for response in ('', 'ERR BUSY', 'SPEED=500.00\r\n'):
+            controller = Mock(fault=None)
+            controller.read_response.side_effect = [response, 'SPEED=500.00\r\n']
+            move = Mock()
+            with self.subTest(response=response), \
+                    patch.object(flow.wf, 'load_params', return_value=Mock(normal_speed=500)), \
+                    patch.object(motion, 'vision_reference_ready', True):
+                with self.assertRaises(RuntimeError):
+                    with flow.positioning_speed(controller):
+                        move()
+                move.assert_not_called()
+                self.assertFalse(motion.vision_reference_ready)
+                controller.emergency_stop.assert_called()
+                self.assertEqual(controller.send.call_args_list[-1], unittest.mock.call('SPEED 500'))
+
+    def test_restore_failure_stops_and_invalidates_reference(self):
+        controller = Mock(fault=None)
+        controller.read_response.side_effect = ['SPEED=650.00\r\n', '']
+        with patch.object(flow.wf, 'load_params', return_value=Mock(normal_speed=500)), \
+                patch.object(motion, 'vision_reference_ready', True):
+            with self.assertRaises(RuntimeError):
+                with flow.positioning_speed(controller):
+                    pass
+            self.assertFalse(motion.vision_reference_ready)
+            controller.emergency_stop.assert_called_once()
 
 
 if __name__ == '__main__':
