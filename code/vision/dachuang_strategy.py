@@ -54,7 +54,7 @@ def build_capture_preview(image, captured_count, count):
     shown = image.copy()
     try:
         points, info = detect_six_points(image)
-        for index, point in enumerate(points, 1):
+        for index, point in enumerate(points[4:], 1):
             xy = tuple(np.rint(point).astype(int))
             cv2.circle(shown, xy, 12, (0, 0, 255), 3)
             cv2.putText(shown, str(index), (xy[0] + 15, xy[1]),
@@ -73,7 +73,7 @@ def detect_multiframe(images):
         try:
             points, info = detect_six_points(image)
             annotated = image.copy()
-            for index, point in enumerate(points, 1):
+            for index, point in enumerate(points[4:], 1):
                 xy = tuple(np.rint(point).astype(int))
                 cv2.circle(annotated, xy, 12, (0, 0, 255), 3)
                 cv2.putText(annotated, str(index), xy, cv2.FONT_HERSHEY_SIMPLEX,

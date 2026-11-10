@@ -89,6 +89,24 @@ class SixPointVisionIntegrationTests(unittest.TestCase):
         self.assertEqual(after['X'] - before['X'], 0)
         self.assertEqual(after['Y'] - before['Y'], 80)
 
+    def test_abdomen_previews_label_the_same_points_the_operator_can_select(self):
+        points = np.array([[10, 10], [20, 20], [30, 30], [40, 40],
+                           [50, 50], [60, 60]], dtype=float)
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        with patch.object(dachuang_strategy, 'detect_six_points',
+                          return_value=(points, {'method': 'TEST'})):
+            for render in (
+                lambda: dachuang_strategy.build_capture_preview(frame, 1, 7),
+                lambda: dachuang_strategy.detect_multiframe([frame]),
+            ):
+                with patch.object(dachuang_strategy.cv2, 'putText') as label, \
+                        patch.object(dachuang_strategy.cv2, 'circle') as circle:
+                    render()
+                    self.assertEqual([call.args[1] for call in circle.call_args_list],
+                                     [(50, 50), (60, 60)])
+                    self.assertEqual([call.args[1] for call in label.call_args_list[:2]],
+                                     ['1', '2'])
+
     def test_geometry_model_declares_symmetric_pairs_and_six_labels(self):
         model_path = (ROOT / 'code' / 'vision' / 'dachuang' /
                       'six_point_geometry_20261106.npz')
