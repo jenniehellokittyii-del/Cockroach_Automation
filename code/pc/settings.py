@@ -39,14 +39,13 @@ VISION_CAPTURE_TIMEOUT_SECONDS = 30.0
 VISION_SETTLE_SECONDS = 2.0
 VISION_MIN_CONFIDENCE = 0.55
 VISION_MIN_STABLE_FRAMES = 5
-# 点位2加入独立 X 补偿后，从视觉位的正常行程可达到约 830 步；
-# 保留少量识别波动余量，同时继续拦截点位1从视觉位直接移动约 1000 步的情况。
-VISION_MAX_XY_MOVE_STEPS = 850
+# 新六点策略和实测逐点补偿下，腹部点从视觉位可移动超过1000步。
+VISION_MAX_XY_MOVE_STEPS = 1200
 VISION_HEAD_MAX_XY_MOVE_STEPS = 1000
 VISION_PIXEL_CALIBRATION = PROJECT_ROOT / 'config' / 'xy_pixel_calibration.json'
 VISION_TOOL_CALIBRATION = PROJECT_ROOT / 'config' / 'manual_left_p2_20260909.json'
-VISION_POINT_COMPENSATION = PROJECT_ROOT / 'config' / 'vision_point_compensation.json'
-VISION_HEAD_POINT_COMPENSATION = PROJECT_ROOT / 'config' / 'vision_head_point_compensation.json'
+VISION_POINT_COMPENSATION = PROJECT_ROOT / 'config' / 'dachuang_point_compensation.json'
+VISION_HEAD_POINT_COMPENSATION = PROJECT_ROOT / 'config' / 'dachuang_head_point_compensation.json'
 VISION_OUTPUT_ROOT = PROJECT_ROOT / 'runtime' / 'vision_output' / 'auto'
 VISION_HEAD_OUTPUT_ROOT = PROJECT_ROOT / 'runtime' / 'vision_output' / 'head_auto'
 VISION_SHOW_RESULT = True

@@ -3,7 +3,7 @@
 
 独立代码文件用途：
     1. 调用相机采集多帧
-    2. 调用视觉/head.py 检测头部四点
+    2. 调用新六点几何策略检测头部四点（源编号 P1–P4）
     3. 对成功帧取中位数
     4. 在窗口显示头部四点，仅返回像素坐标，不保存文件
 
@@ -79,12 +79,12 @@ def _draw_head_preview(image, points):
 
 def build_head_capture_preview(image, captured_count, count, split_ratio=SPLIT_RATIO):
     """采图时调用头部算法，避免使用腹部 P2 预览。"""
-    from head import detect_head_points
+    from dachuang_strategy import detect_head_points
 
     try:
-        points, _ = detect_head_points(image, split_ratio=split_ratio)
+        points, info = detect_head_points(image, split_ratio=split_ratio)
         shown = _draw_head_preview(image, points)
-        status = 'HEAD DETECTED' if np.isfinite(points).all() else 'HEAD POINTS INCOMPLETE'
+        status = info['method'] if np.isfinite(points).all() else 'HEAD POINTS INCOMPLETE'
     except Exception as exc:
         shown = _draw_head_preview(image, [(np.nan, np.nan)] * 4)
         status = f'HEAD NOT DETECTED: {str(exc)[:72]}'
@@ -135,9 +135,10 @@ def capture_and_detect_head(
     """
     _add_vision_path()
 
-    from head import detect_head_points
+    from dachuang_strategy import detect_head_points, MODE
     from live_abdomen_detection import capture_frames
 
+    print(f'VIS_HEAD: 大创六点策略 mode={MODE}，使用源点 P1–P4')
     print(f'VIS_HEAD: 机构稳定 {settle_seconds:.0f}s 后开始头部识别')
     time.sleep(settle_seconds)
 

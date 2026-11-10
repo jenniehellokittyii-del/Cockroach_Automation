@@ -113,7 +113,8 @@ def capture_and_calculate_vision_target():
     vision_dir = PROJECT_ROOT / 'code' / 'vision'
     if str(vision_dir) not in sys.path:
         sys.path.insert(0, str(vision_dir))
-    from abdomen_spot_detector import detect_multiframe, imwrite_unicode
+    from abdomen_spot_detector import imwrite_unicode
+    from dachuang_strategy import detect_multiframe, build_capture_preview
     from live_abdomen_detection import capture_frames
 
     print(f'VISION: 机构稳定 {VISION_SETTLE_SECONDS:.0f}s 后开始约20s视觉识别')
@@ -125,6 +126,7 @@ def capture_and_calculate_vision_target():
         timeout_seconds=VISION_CAPTURE_TIMEOUT_SECONDS,
         show_preview=VISION_SHOW_RESULT,
         preview_width=1280,
+        preview_builder=build_capture_preview,
     )
     result = detect_multiframe(frames)
     successful = int(result['successful_frames'])
